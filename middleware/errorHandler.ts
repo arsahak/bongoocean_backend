@@ -18,7 +18,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   } else if (err.name === "MulterError") {
     const message =
       err.code === "LIMIT_FILE_SIZE"
-        ? "File is too large (max 5MB)"
+        ? `File is too large (max ${err.field === "attachment" ? "10MB" : "5MB"})`
         : err.message;
     error = new ApiError(400, message);
   } else if (err instanceof ApiError) {

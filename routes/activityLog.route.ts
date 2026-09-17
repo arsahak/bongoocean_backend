@@ -32,7 +32,7 @@ const router = Router();
  *         name: module
  *         schema:
  *           type: string
- *           enum: [product, category, brand, supplier, stock, order, customer, staff, review]
+ *           enum: [product, category, brand, supplier, stock, order, customer, staff, review, costing]
  *       - in: query
  *         name: action
  *         schema:

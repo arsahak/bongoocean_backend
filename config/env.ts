@@ -42,4 +42,9 @@ export const env = {
   imagebb: {
     apiKey: process.env.IMAGEBB_API_KEY as string,
   },
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_NAME || "",
+    apiKey: process.env.CLOUDINARY_API_KEY || "",
+    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  },
 };

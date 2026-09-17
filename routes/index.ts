@@ -12,6 +12,7 @@ import customerRoutes from "./customer.route";
 import messagesRoutes from "./messages.route";
 import dashboardRoutes from "./dashboard.route";
 import activityLogRoutes from "./activityLog.route";
+import costRoutes from "./cost.route";
 
 const router = Router();
 
@@ -51,5 +52,6 @@ router.use("/customers", customerRoutes);
 router.use("/messages", messagesRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/activity-logs", activityLogRoutes);
+router.use("/costs", costRoutes);
 
 export default router;
