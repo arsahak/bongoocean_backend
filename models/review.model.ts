@@ -5,6 +5,9 @@ export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 export interface IReviewAttachment {
   url: string;
+  // DigitalOcean Spaces object key, kept only to delete the file if a
+  // failed review submission needs to roll back its uploads.
+  key: string;
   name: string;
   type: "image" | "pdf";
 }
@@ -27,6 +30,7 @@ export interface IReview extends Document {
 const reviewAttachmentSchema = new Schema<IReviewAttachment>(
   {
     url: { type: String, required: true, trim: true },
+    key: { type: String, trim: true, default: "" },
     name: { type: String, required: true, trim: true },
     type: { type: String, enum: ["image", "pdf"], required: true },
   },

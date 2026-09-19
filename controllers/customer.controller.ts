@@ -5,7 +5,7 @@ import { Order } from "../models/order.model";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import { deleteFromImgbb } from "../utils/uploadToImgbb";
+import { deleteFromSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 const parsePagination = (req: Request) => {
@@ -273,9 +273,9 @@ export const deleteCustomer = asyncHandler(
     const customerName = [customer.firstName, customer.lastName]
       .filter(Boolean)
       .join(" ");
-    const avatar = customer.avatar;
+    const avatarKey = customer.avatarKey;
     await customer.deleteOne();
-    if (avatar) await deleteFromImgbb(avatar);
+    if (avatarKey) await deleteFromSpaces(avatarKey);
 
     void logActivity({
       req,

@@ -3,7 +3,7 @@ import { Supplier } from "../models/supplier.model";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
-import { uploadToImgbb, deleteFromImgbb } from "../utils/uploadToImgbb";
+import { uploadToSpaces, deleteFromSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 export const getSuppliers = asyncHandler(
@@ -35,20 +35,29 @@ export const createSupplier = asyncHandler(
       sortOrder,
     } = req.body;
 
-    const logo = req.file ? await uploadToImgbb(req.file, "suppliers") : "";
+    const uploaded = req.file
+      ? await uploadToSpaces(req.file, "suppliers")
+      : null;
 
-    const supplier = await Supplier.create({
-      name,
-      contactPerson,
-      email,
-      phone,
-      address,
-      website,
-      description,
-      logo,
-      isActive,
-      sortOrder,
-    });
+    let supplier;
+    try {
+      supplier = await Supplier.create({
+        name,
+        contactPerson,
+        email,
+        phone,
+        address,
+        website,
+        description,
+        logo: uploaded?.url || "",
+        logoKey: uploaded?.key || "",
+        isActive,
+        sortOrder,
+      });
+    } catch (err) {
+      if (uploaded) await deleteFromSpaces(uploaded.key);
+      throw err;
+    }
 
     void logActivity({
       req,
@@ -90,13 +99,28 @@ export const updateSupplier = asyncHandler(
     if (isActive !== undefined) supplier.isActive = isActive;
     if (sortOrder !== undefined) supplier.sortOrder = sortOrder;
 
+    // Deletion of the old logo is deferred until after `save()` succeeds, so
+    // a validation failure never destroys the still-live old logo, and a
+    // newly uploaded replacement is rolled back instead of left orphaned.
+    let previousLogoKey: string | null = null;
+    let newlyUploadedKey: string | null = null;
+
     if (req.file) {
-      const previousLogo = supplier.logo;
-      supplier.logo = await uploadToImgbb(req.file, "suppliers");
-      if (previousLogo) await deleteFromImgbb(previousLogo);
+      const uploaded = await uploadToSpaces(req.file, "suppliers");
+      newlyUploadedKey = uploaded.key;
+      if (supplier.logoKey) previousLogoKey = supplier.logoKey;
+      supplier.logo = uploaded.url;
+      supplier.logoKey = uploaded.key;
     }
 
-    await supplier.save();
+    try {
+      await supplier.save();
+    } catch (err) {
+      if (newlyUploadedKey) await deleteFromSpaces(newlyUploadedKey);
+      throw err;
+    }
+
+    if (previousLogoKey) await deleteFromSpaces(previousLogoKey);
 
     void logActivity({
       req,
@@ -116,8 +140,8 @@ export const deleteSupplier = asyncHandler(
     const supplier = await Supplier.findByIdAndDelete(req.params.id);
     if (!supplier) throw new ApiError(404, "Supplier not found");
 
-    if (supplier.logo) {
-      await deleteFromImgbb(supplier.logo);
+    if (supplier.logoKey) {
+      await deleteFromSpaces(supplier.logoKey);
     }
 
     void logActivity({

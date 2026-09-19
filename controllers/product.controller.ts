@@ -1,17 +1,44 @@
 import type { Request, Response } from "express";
 import mongoose from "mongoose";
-import { Product } from "../models/product.model";
+import { Product, expireStaleNewArrivals } from "../models/product.model";
 import { Category } from "../models/category.model";
 import { Brand } from "../models/brand.model";
+import { Vendor } from "../models/vendors.model";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
-import { uploadToImgbb, deleteFromImgbb } from "../utils/uploadToImgbb";
+import { uploadToSpaces, deleteFromSpaces } from "../utils/uploadToSpaces";
+import { extractYoutubeId, youtubeEmbedUrl } from "../utils/youtube";
 import { logActivity } from "../utils/logActivity";
 
 type UploadedFiles = { [fieldname: string]: Express.Multer.File[] };
 
-const SKU_PREFIX = "FMA-WC-";
+interface ProductVideoFields {
+  videoUrl: string;
+  videoSource: "" | "upload" | "youtube";
+  videoKey: string;
+}
+
+const NO_VIDEO: ProductVideoFields = {
+  videoUrl: "",
+  videoSource: "",
+  videoKey: "",
+};
+
+const buildVideoFromUpload = async (
+  file: Express.Multer.File,
+): Promise<ProductVideoFields> => {
+  const uploaded = await uploadToSpaces(file, "products/video");
+  return { videoUrl: uploaded.url, videoSource: "upload", videoKey: uploaded.key };
+};
+
+const buildVideoFromYoutube = (url: string): ProductVideoFields => {
+  const id = extractYoutubeId(url);
+  if (!id) throw new ApiError(422, "Invalid YouTube URL");
+  return { videoUrl: youtubeEmbedUrl(id), videoSource: "youtube", videoKey: "" };
+};
+
+const SKU_PREFIX = "BOO-OW-";
 
 export const getNextSku = asyncHandler(async (req: Request, res: Response) => {
   const pattern = new RegExp(`^${SKU_PREFIX}(\\d+)$`, "i");
@@ -32,6 +59,8 @@ export const getNextSku = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getProducts = asyncHandler(async (req: Request, res: Response) => {
+  await expireStaleNewArrivals();
+
   const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
   const limit = Math.min(
     100,
@@ -47,11 +76,24 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     }
     filter.category = category;
   }
+  if (req.query.vendor) {
+    const vendor = String(req.query.vendor);
+    if (!mongoose.Types.ObjectId.isValid(vendor)) {
+      throw new ApiError(422, "Invalid vendor");
+    }
+    filter.vendor = vendor;
+  }
   if (req.query.isActive !== undefined) {
     filter.isActive = req.query.isActive === "true";
   }
   if (req.query.isFeatured !== undefined) {
     filter.isFeatured = req.query.isFeatured === "true";
+  }
+  if (req.query.isTrending !== undefined) {
+    filter.isTrending = req.query.isTrending === "true";
+  }
+  if (req.query.isNewArrival !== undefined) {
+    filter.isNewArrival = req.query.isNewArrival === "true";
   }
   if (req.query.search) {
     const escapedSearch = String(req.query.search)
@@ -81,6 +123,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     Product.find(filter)
       .populate("category", "name slug")
       .populate("brand", "name slug")
+      .populate("vendor", "name slug")
       .sort(sort)
       .skip(skip)
       .limit(limit),
@@ -97,6 +140,8 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getProduct = asyncHandler(async (req: Request, res: Response) => {
+  await expireStaleNewArrivals();
+
   const { id } = req.params;
   const query = mongoose.Types.ObjectId.isValid(id)
     ? { _id: id }
@@ -104,7 +149,8 @@ export const getProduct = asyncHandler(async (req: Request, res: Response) => {
 
   const product = await Product.findOne(query)
     .populate("category", "name slug")
-    .populate("brand", "name slug");
+    .populate("brand", "name slug")
+    .populate("vendor", "name slug");
   if (!product) throw new ApiError(404, "Product not found");
   return ApiResponse(res, 200, "Product fetched successfully", product);
 });
@@ -116,6 +162,7 @@ export const createProduct = asyncHandler(
       sku,
       category,
       brand,
+      vendor,
       shortDescription,
       overview,
       price,
@@ -125,6 +172,10 @@ export const createProduct = asyncHandler(
       stock,
       isActive,
       isFeatured,
+      isTrending,
+      isNewArrival,
+      videoSource,
+      videoUrl,
       sortOrder,
     } = req.body;
 
@@ -136,20 +187,32 @@ export const createProduct = asyncHandler(
       if (!brandExists) throw new ApiError(422, "Brand not found");
     }
 
+    if (vendor) {
+      const vendorExists = await Vendor.exists({ _id: vendor });
+      if (!vendorExists) throw new ApiError(422, "Vendor not found");
+    }
+
     const files = req.files as UploadedFiles | undefined;
     const featureImageFile = files?.featureImage?.[0];
     const galleryFiles = files?.galleryImages || [];
+    const videoFile = files?.video?.[0];
 
     if (galleryFiles.length > 6) {
       throw new ApiError(422, "A product can have at most 6 gallery images");
     }
 
-    const featureImage = featureImageFile
-      ? await uploadToImgbb(featureImageFile, "products")
-      : "";
-    const galleryImages = await Promise.all(
-      galleryFiles.map((file) => uploadToImgbb(file, "products/gallery")),
+    const featureImageUpload = featureImageFile
+      ? await uploadToSpaces(featureImageFile, "products")
+      : null;
+    const galleryUploads = await Promise.all(
+      galleryFiles.map((file) => uploadToSpaces(file, "products/gallery")),
     );
+
+    const video = videoFile
+      ? await buildVideoFromUpload(videoFile)
+      : videoSource === "youtube" && videoUrl
+        ? buildVideoFromYoutube(String(videoUrl))
+        : NO_VIDEO;
 
     let product;
     try {
@@ -158,10 +221,14 @@ export const createProduct = asyncHandler(
         sku,
         category,
         brand: brand || null,
+        vendor: vendor || null,
         shortDescription,
         overview,
-        featureImage,
-        galleryImages,
+        featureImage: featureImageUpload?.url || "",
+        featureImageKey: featureImageUpload?.key || "",
+        galleryImages: galleryUploads.map((u) => u.url),
+        galleryImageKeys: galleryUploads.map((u) => u.key),
+        ...video,
         price,
         discountPrice,
         unit,
@@ -169,13 +236,19 @@ export const createProduct = asyncHandler(
         stock,
         isActive,
         isFeatured,
+        isTrending,
+        isNewArrival,
         sortOrder,
       });
     } catch (err) {
-      // Images already landed in Spaces before this point — don't leave them
-      // orphaned if the document itself fails to save.
-      const uploaded = [featureImage, ...galleryImages].filter(Boolean);
-      await Promise.all(uploaded.map((url) => deleteFromImgbb(url)));
+      // Images/video already landed in storage before this point — don't
+      // leave them orphaned if the document itself fails to save.
+      const uploadedKeys = [
+        featureImageUpload?.key,
+        ...galleryUploads.map((u) => u.key),
+      ].filter((key): key is string => Boolean(key));
+      await Promise.all(uploadedKeys.map((key) => deleteFromSpaces(key)));
+      if (video.videoSource === "upload") await deleteFromSpaces(video.videoKey);
       throw err;
     }
 
@@ -202,6 +275,7 @@ export const updateProduct = asyncHandler(
       sku,
       category,
       brand,
+      vendor,
       shortDescription,
       overview,
       price,
@@ -211,6 +285,11 @@ export const updateProduct = asyncHandler(
       stock,
       isActive,
       isFeatured,
+      isTrending,
+      isNewArrival,
+      videoSource,
+      videoUrl,
+      removeVideo,
       sortOrder,
       removeFeatureImage,
       keepGalleryImages,
@@ -232,6 +311,16 @@ export const updateProduct = asyncHandler(
       }
     }
 
+    if (vendor !== undefined) {
+      if (vendor) {
+        const vendorExists = await Vendor.exists({ _id: vendor });
+        if (!vendorExists) throw new ApiError(422, "Vendor not found");
+        product.vendor = vendor;
+      } else {
+        product.vendor = null;
+      }
+    }
+
     if (title !== undefined) product.title = title;
     if (sku !== undefined) product.sku = sku;
     if (shortDescription !== undefined)
@@ -244,31 +333,49 @@ export const updateProduct = asyncHandler(
     if (stock !== undefined) product.stock = stock;
     if (isActive !== undefined) product.isActive = isActive;
     if (isFeatured !== undefined) product.isFeatured = isFeatured;
+    if (isTrending !== undefined) product.isTrending = isTrending;
+    // Only assign when it actually flips — Mongoose marks a path "modified"
+    // on any direct assignment even to an unchanged value, which would
+    // otherwise reset the 30-day new-arrival window on every unrelated edit.
+    if (isNewArrival !== undefined && isNewArrival !== product.isNewArrival) {
+      product.isNewArrival = isNewArrival;
+    }
     if (sortOrder !== undefined) product.sortOrder = sortOrder;
 
     const files = req.files as UploadedFiles | undefined;
     const featureImageFile = files?.featureImage?.[0];
     const galleryFiles = files?.galleryImages || [];
+    const videoFile = files?.video?.[0];
 
-    // Deletions from Spaces are deferred until after `save()` succeeds, so a
-    // validation failure never destroys the still-live old images, and newly
+    // Deletions are deferred until after `save()` succeeds, so a validation
+    // failure never destroys the still-live old images/video, and newly
     // uploaded replacements are rolled back instead of left orphaned.
-    const newlyUploadedUrls: string[] = [];
-    const urlsToDeleteOnSuccess: string[] = [];
+    const newlyUploadedKeys: string[] = [];
+    const keysToDeleteOnSuccess: string[] = [];
+    let newlyUploadedVideoKey: string | null = null;
+    let videoKeyToDeleteOnSuccess: string | null = null;
 
     if (featureImageFile) {
-      const previousImage = product.featureImage;
-      const uploaded = await uploadToImgbb(featureImageFile, "products");
-      newlyUploadedUrls.push(uploaded);
-      product.featureImage = uploaded;
-      if (previousImage) urlsToDeleteOnSuccess.push(previousImage);
+      const previousKey = product.featureImageKey;
+      const uploaded = await uploadToSpaces(featureImageFile, "products");
+      newlyUploadedKeys.push(uploaded.key);
+      product.featureImage = uploaded.url;
+      product.featureImageKey = uploaded.key;
+      if (previousKey) keysToDeleteOnSuccess.push(previousKey);
     } else if (removeFeatureImage === "true" || removeFeatureImage === true) {
-      const previousImage = product.featureImage;
+      const previousKey = product.featureImageKey;
       product.featureImage = "";
-      if (previousImage) urlsToDeleteOnSuccess.push(previousImage);
+      product.featureImageKey = "";
+      if (previousKey) keysToDeleteOnSuccess.push(previousKey);
     }
 
     if (galleryFiles.length > 0 || keepGalleryImages !== undefined) {
+      const previousGalleryImages = product.galleryImages;
+      const previousGalleryKeys = product.galleryImageKeys;
+      const previousKeyByUrl = new Map(
+        previousGalleryImages.map((url, i) => [url, previousGalleryKeys[i]]),
+      );
+
       let keptUrls = product.galleryImages;
       if (keepGalleryImages !== undefined) {
         try {
@@ -283,35 +390,68 @@ export const updateProduct = asyncHandler(
 
       if (keptUrls.length + galleryFiles.length > 6) {
         await Promise.all(
-          newlyUploadedUrls.map((url) => deleteFromImgbb(url)),
+          newlyUploadedKeys.map((key) => deleteFromSpaces(key)),
         );
         throw new ApiError(422, "A product can have at most 6 gallery images");
       }
 
       const newlyUploaded = await Promise.all(
-        galleryFiles.map((file) => uploadToImgbb(file, "products/gallery")),
+        galleryFiles.map((file) => uploadToSpaces(file, "products/gallery")),
       );
-      newlyUploadedUrls.push(...newlyUploaded);
+      newlyUploadedKeys.push(...newlyUploaded.map((u) => u.key));
 
-      const previousGallery = product.galleryImages;
-      product.galleryImages = [...keptUrls, ...newlyUploaded];
+      const keptKeys = keptUrls.map((url) => previousKeyByUrl.get(url) || "");
 
-      const removedUrls = previousGallery.filter(
+      product.galleryImages = [...keptUrls, ...newlyUploaded.map((u) => u.url)];
+      product.galleryImageKeys = [...keptKeys, ...newlyUploaded.map((u) => u.key)];
+
+      const removedUrls = previousGalleryImages.filter(
         (url) => !keptUrls.includes(url),
       );
-      urlsToDeleteOnSuccess.push(...removedUrls);
+      const removedKeys = removedUrls
+        .map((url) => previousKeyByUrl.get(url))
+        .filter((key): key is string => Boolean(key));
+      keysToDeleteOnSuccess.push(...removedKeys);
+    }
+
+    if (videoFile) {
+      const built = await buildVideoFromUpload(videoFile);
+      newlyUploadedVideoKey = built.videoKey;
+      if (product.videoSource === "upload" && product.videoKey) {
+        videoKeyToDeleteOnSuccess = product.videoKey;
+      }
+      product.videoUrl = built.videoUrl;
+      product.videoSource = built.videoSource;
+      product.videoKey = built.videoKey;
+    } else if (videoSource === "youtube" && videoUrl) {
+      const built = buildVideoFromYoutube(String(videoUrl));
+      if (product.videoSource === "upload" && product.videoKey) {
+        videoKeyToDeleteOnSuccess = product.videoKey;
+      }
+      product.videoUrl = built.videoUrl;
+      product.videoSource = built.videoSource;
+      product.videoKey = built.videoKey;
+    } else if (removeVideo === "true" || removeVideo === true) {
+      if (product.videoSource === "upload" && product.videoKey) {
+        videoKeyToDeleteOnSuccess = product.videoKey;
+      }
+      product.videoUrl = "";
+      product.videoSource = "";
+      product.videoKey = "";
     }
 
     try {
       await product.save();
     } catch (err) {
-      await Promise.all(newlyUploadedUrls.map((url) => deleteFromImgbb(url)));
+      await Promise.all(newlyUploadedKeys.map((key) => deleteFromSpaces(key)));
+      if (newlyUploadedVideoKey) await deleteFromSpaces(newlyUploadedVideoKey);
       throw err;
     }
 
     await Promise.all(
-      urlsToDeleteOnSuccess.map((url) => deleteFromImgbb(url)),
+      keysToDeleteOnSuccess.map((key) => deleteFromSpaces(key)),
     );
+    if (videoKeyToDeleteOnSuccess) await deleteFromSpaces(videoKeyToDeleteOnSuccess);
 
     void logActivity({
       req,
@@ -331,10 +471,16 @@ export const deleteProduct = asyncHandler(
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) throw new ApiError(404, "Product not found");
 
-    const deletions = [deleteFromImgbb(product.featureImage)];
-    product.galleryImages.forEach((url) =>
-      deletions.push(deleteFromImgbb(url)),
-    );
+    const deletions: Promise<void>[] = [];
+    if (product.featureImageKey) {
+      deletions.push(deleteFromSpaces(product.featureImageKey));
+    }
+    product.galleryImageKeys.forEach((key) => {
+      if (key) deletions.push(deleteFromSpaces(key));
+    });
+    if (product.videoSource === "upload" && product.videoKey) {
+      deletions.push(deleteFromSpaces(product.videoKey));
+    }
     await Promise.all(deletions);
 
     void logActivity({

@@ -8,6 +8,7 @@ export const ACTIVITY_MODULES = [
   "category",
   "brand",
   "supplier",
+  "vendor",
   "stock",
   "order",
   "customer",
@@ -56,7 +57,7 @@ export interface IActivityLog extends Document {
  *           enum: [create, update, delete]
  *         module:
  *           type: string
- *           enum: [product, category, brand, supplier, stock, order, customer, staff, review, costing]
+ *           enum: [product, category, brand, supplier, vendor, stock, order, customer, staff, review, costing]
  *         resourceId:
  *           type: string
  *           nullable: true

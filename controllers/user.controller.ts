@@ -3,7 +3,7 @@ import { User, type UserRole } from "../models/user.model";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
-import { uploadToImgbb, deleteFromImgbb } from "../utils/uploadToImgbb";
+import { uploadToSpaces, deleteFromSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 const CREATABLE_ROLES_BY: Record<UserRole, UserRole[]> = {
@@ -169,9 +169,9 @@ export const deleteStaff = asyncHandler(async (req: Request, res: Response) => {
   const staffName = [target.firstName, target.lastName]
     .filter(Boolean)
     .join(" ");
-  const avatar = target.avatar;
+  const avatarKey = target.avatarKey;
   await target.deleteOne();
-  if (avatar) await deleteFromImgbb(avatar);
+  if (avatarKey) await deleteFromSpaces(avatarKey);
 
   void logActivity({
     req,
@@ -247,13 +247,21 @@ export const updateAvatar = asyncHandler(async (req: Request, res: Response) => 
   if (!req.file) throw new ApiError(422, "Avatar image file is required");
 
   const requester = req.user!;
-  const previousAvatar = requester.avatar;
+  const previousAvatarKey = requester.avatarKey;
 
-  requester.avatar = await uploadToImgbb(req.file, "avatars");
-  await requester.save();
+  const uploaded = await uploadToSpaces(req.file, "avatars");
+  requester.avatar = uploaded.url;
+  requester.avatarKey = uploaded.key;
 
-  if (previousAvatar) {
-    await deleteFromImgbb(previousAvatar);
+  try {
+    await requester.save();
+  } catch (err) {
+    await deleteFromSpaces(uploaded.key);
+    throw err;
+  }
+
+  if (previousAvatarKey) {
+    await deleteFromSpaces(previousAvatarKey);
   }
 
   return ApiResponse(res, 200, "Avatar updated successfully", requester);

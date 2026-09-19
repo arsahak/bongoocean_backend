@@ -12,6 +12,7 @@ export const connectDB = async (): Promise<string> => {
 
   if (!connectionPromise) {
     connectionPromise = mongoose.connect(env.mongoUri, {
+      dbName: env.dbName,
       serverSelectionTimeoutMS: 10000,
     });
   }

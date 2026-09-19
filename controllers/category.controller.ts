@@ -4,7 +4,7 @@ import { Product } from "../models/product.model";
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
-import { uploadToImgbb, deleteFromImgbb } from "../utils/uploadToImgbb";
+import { uploadToSpaces, deleteFromSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 export const getCategories = asyncHandler(
@@ -48,16 +48,25 @@ export const createCategory = asyncHandler(
       if (!parentExists) throw new ApiError(422, "Parent category not found");
     }
 
-    const image = req.file ? await uploadToImgbb(req.file, "categories") : "";
+    const uploaded = req.file
+      ? await uploadToSpaces(req.file, "categories")
+      : null;
 
-    const category = await Category.create({
-      name,
-      description,
-      image,
-      parent: parent || null,
-      isActive,
-      sortOrder,
-    });
+    let category;
+    try {
+      category = await Category.create({
+        name,
+        description,
+        image: uploaded?.url || "",
+        imageKey: uploaded?.key || "",
+        parent: parent || null,
+        isActive,
+        sortOrder,
+      });
+    } catch (err) {
+      if (uploaded) await deleteFromSpaces(uploaded.key);
+      throw err;
+    }
 
     void logActivity({
       req,
@@ -93,13 +102,28 @@ export const updateCategory = asyncHandler(
     if (isActive !== undefined) category.isActive = isActive;
     if (sortOrder !== undefined) category.sortOrder = sortOrder;
 
+    // Deletion of the old image is deferred until after `save()` succeeds,
+    // so a validation failure never destroys the still-live old image, and
+    // a newly uploaded replacement is rolled back instead of left orphaned.
+    let previousImageKey: string | null = null;
+    let newlyUploadedKey: string | null = null;
+
     if (req.file) {
-      const previousImage = category.image;
-      category.image = await uploadToImgbb(req.file, "categories");
-      if (previousImage) await deleteFromImgbb(previousImage);
+      const uploaded = await uploadToSpaces(req.file, "categories");
+      newlyUploadedKey = uploaded.key;
+      if (category.imageKey) previousImageKey = category.imageKey;
+      category.image = uploaded.url;
+      category.imageKey = uploaded.key;
     }
 
-    await category.save();
+    try {
+      await category.save();
+    } catch (err) {
+      if (newlyUploadedKey) await deleteFromSpaces(newlyUploadedKey);
+      throw err;
+    }
+
+    if (previousImageKey) await deleteFromSpaces(previousImageKey);
 
     void logActivity({
       req,
@@ -127,8 +151,8 @@ export const deleteCategory = asyncHandler(
     const category = await Category.findByIdAndDelete(req.params.id);
     if (!category) throw new ApiError(404, "Category not found");
 
-    if (category.image) {
-      await deleteFromImgbb(category.image);
+    if (category.imageKey) {
+      await deleteFromSpaces(category.imageKey);
     }
 
     void logActivity({

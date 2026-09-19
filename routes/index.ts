@@ -4,6 +4,7 @@ import userRoutes from "./user.route";
 import categoryRoutes from "./category.route";
 import brandRoutes from "./brand.route";
 import supplierRoutes from "./supplier.route";
+import vendorRoutes from "./vendors.route";
 import stockRoutes from "./stock.route";
 import productRoutes from "./product.route";
 import orderRoutes from "./order.route";
@@ -13,6 +14,7 @@ import messagesRoutes from "./messages.route";
 import dashboardRoutes from "./dashboard.route";
 import activityLogRoutes from "./activityLog.route";
 import costRoutes from "./cost.route";
+import uploadRoutes from "./upload.route";
 
 const router = Router();
 
@@ -44,6 +46,7 @@ router.use("/users", userRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/brands", brandRoutes);
 router.use("/suppliers", supplierRoutes);
+router.use("/vendors", vendorRoutes);
 router.use("/stocks", stockRoutes);
 router.use("/products", productRoutes);
 router.use("/orders", orderRoutes);
@@ -53,5 +56,6 @@ router.use("/messages", messagesRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/activity-logs", activityLogRoutes);
 router.use("/costs", costRoutes);
+router.use("/uploads", uploadRoutes);
 
 export default router;

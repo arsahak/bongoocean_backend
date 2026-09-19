@@ -42,6 +42,9 @@ export interface IUser extends Document {
   phone?: string;
   email?: string;
   avatar?: string;
+  // DigitalOcean Spaces object key backing `avatar`, kept only to delete the
+  // old file on replace/removal — not shown in swagger docs.
+  avatarKey?: string;
   password: string;
   role: UserRole;
   isActive: boolean;
@@ -225,6 +228,11 @@ const userSchema = new Schema<IUser>(
       match: [EMAIL_REGEX, "Please enter a valid email address"],
     },
     avatar: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    avatarKey: {
       type: String,
       trim: true,
       default: "",

@@ -1,6 +1,6 @@
 import { body, type ValidationChain } from "express-validator";
 import mongoose from "mongoose";
-import { PRODUCT_UNITS } from "../models/product.model";
+import { PRODUCT_UNITS, PRODUCT_VIDEO_SOURCES } from "../models/product.model";
 
 const isValidObjectId = (value: string) => mongoose.Types.ObjectId.isValid(value);
 
@@ -16,6 +16,10 @@ export const createProductRules: ValidationChain[] = [
     .optional({ checkFalsy: true })
     .custom(isValidObjectId)
     .withMessage("Brand must be a valid id"),
+  body("vendor")
+    .optional({ checkFalsy: true })
+    .custom(isValidObjectId)
+    .withMessage("Vendor must be a valid id"),
   body("shortDescription").optional({ checkFalsy: true }).trim(),
   body("overview").optional({ checkFalsy: true }).trim(),
   body("price")
@@ -53,6 +57,21 @@ export const createProductRules: ValidationChain[] = [
     .isBoolean()
     .withMessage("isFeatured must be a boolean")
     .toBoolean(),
+  body("isTrending")
+    .optional()
+    .isBoolean()
+    .withMessage("isTrending must be a boolean")
+    .toBoolean(),
+  body("isNewArrival")
+    .optional()
+    .isBoolean()
+    .withMessage("isNewArrival must be a boolean")
+    .toBoolean(),
+  body("videoSource")
+    .optional({ checkFalsy: true })
+    .isIn(PRODUCT_VIDEO_SOURCES)
+    .withMessage(`videoSource must be one of: ${PRODUCT_VIDEO_SOURCES.join(", ")}`),
+  body("videoUrl").optional({ checkFalsy: true }).trim(),
   body("sortOrder")
     .optional()
     .isInt({ min: 0 })
@@ -71,6 +90,10 @@ export const updateProductRules: ValidationChain[] = [
     .optional({ checkFalsy: true })
     .custom(isValidObjectId)
     .withMessage("Brand must be a valid id"),
+  body("vendor")
+    .optional({ checkFalsy: true })
+    .custom(isValidObjectId)
+    .withMessage("Vendor must be a valid id"),
   body("shortDescription").optional({ checkFalsy: true }).trim(),
   body("overview").optional({ checkFalsy: true }).trim(),
   body("price")
@@ -107,6 +130,22 @@ export const updateProductRules: ValidationChain[] = [
     .isBoolean()
     .withMessage("isFeatured must be a boolean")
     .toBoolean(),
+  body("isTrending")
+    .optional()
+    .isBoolean()
+    .withMessage("isTrending must be a boolean")
+    .toBoolean(),
+  body("isNewArrival")
+    .optional()
+    .isBoolean()
+    .withMessage("isNewArrival must be a boolean")
+    .toBoolean(),
+  body("videoSource")
+    .optional({ checkFalsy: true })
+    .isIn(PRODUCT_VIDEO_SOURCES)
+    .withMessage(`videoSource must be one of: ${PRODUCT_VIDEO_SOURCES.join(", ")}`),
+  body("videoUrl").optional({ checkFalsy: true }).trim(),
+  body("removeVideo").optional().isBoolean().toBoolean(),
   body("sortOrder")
     .optional()
     .isInt({ min: 0 })

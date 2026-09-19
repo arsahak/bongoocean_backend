@@ -11,7 +11,7 @@ import {
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import { deleteFromImgbb, uploadToImgbb } from "../utils/uploadToImgbb";
+import { deleteFromSpaces, uploadToSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 const parsePagination = (req: Request, defaultLimit = 10) => {
@@ -69,9 +69,10 @@ export const submitReview = asyncHandler(
 
     try {
       for (const file of files) {
-        const url = await uploadToImgbb(file, `reviews/${req.user!._id}`);
+        const uploaded = await uploadToSpaces(file, `reviews/${req.user!._id}`);
         uploadedAttachments.push({
-          url,
+          url: uploaded.url,
+          key: uploaded.key,
           name: file.originalname,
           type: file.mimetype === "application/pdf" ? "pdf" : "image",
         });
@@ -96,7 +97,7 @@ export const submitReview = asyncHandler(
       );
     } catch (error) {
       await Promise.allSettled(
-        uploadedAttachments.map(({ url }) => deleteFromImgbb(url))
+        uploadedAttachments.map(({ key }) => deleteFromSpaces(key))
       );
       throw error;
     }

@@ -9,6 +9,9 @@ export interface ISupplier extends Document {
   address?: string;
   website?: string;
   logo?: string;
+  // DigitalOcean Spaces object key backing `logo`, kept only to delete the
+  // old file on replace/removal — not shown in swagger docs.
+  logoKey?: string;
   description?: string;
   isActive: boolean;
   sortOrder: number;
@@ -141,6 +144,11 @@ const supplierSchema = new Schema<ISupplier>(
       default: "",
     },
     logo: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    logoKey: {
       type: String,
       trim: true,
       default: "",

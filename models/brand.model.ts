@@ -5,6 +5,9 @@ export interface IBrand extends Document {
   slug: string;
   description?: string;
   logo?: string;
+  // DigitalOcean Spaces object key backing `logo`, kept only to delete the
+  // old file on replace/removal — not shown in swagger docs.
+  logoKey?: string;
   isActive: boolean;
   sortOrder: number;
   createdAt: Date;
@@ -40,7 +43,8 @@ const slugify = (text: string): string =>
  *           example: Aquarium filtration and lighting equipment
  *         logo:
  *           type: string
- *           example: https://i.ibb.co/xxxx/aqua-one.jpg
+ *           description: Hosted on DigitalOcean Spaces
+ *           example: https://bongoocean.nyc3.digitaloceanspaces.com/bongoocean/brands/aqua-one.jpg
  *         isActive:
  *           type: boolean
  *           example: true
@@ -95,6 +99,11 @@ const brandSchema = new Schema<IBrand>(
       default: "",
     },
     logo: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    logoKey: {
       type: String,
       trim: true,
       default: "",

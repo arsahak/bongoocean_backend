@@ -30,8 +30,9 @@ export interface ICostAttachment {
   name: string;
   type: "image" | "video";
   size: number;
-  publicId: string;
-  resourceType: "image" | "video";
+  // DigitalOcean Spaces object key, kept only to delete the file on
+  // replace/removal.
+  key: string;
 }
 
 export interface ICost extends Document {
@@ -58,12 +59,7 @@ const costAttachmentSchema = new Schema<ICostAttachment>(
     name: { type: String, required: true, trim: true },
     type: { type: String, enum: ["image", "video"], required: true },
     size: { type: Number, required: true, min: 0 },
-    publicId: { type: String, required: true, trim: true },
-    resourceType: {
-      type: String,
-      enum: ["image", "video"],
-      required: true,
-    },
+    key: { type: String, required: true, trim: true },
   },
   { _id: false },
 );

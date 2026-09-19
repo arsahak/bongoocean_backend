@@ -7,10 +7,7 @@ import {
 import { asyncHandler } from "../middleware/asyncHandler";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
-import {
-  deleteFromCloudinary,
-  uploadToCloudinary,
-} from "../utils/uploadToCloudinary";
+import { deleteFromSpaces, uploadToSpaces } from "../utils/uploadToSpaces";
 import { logActivity } from "../utils/logActivity";
 
 const escapeRegex = (value: string) =>
@@ -33,13 +30,12 @@ const dhakaPeriodBoundaries = () => {
 const attachmentFromFile = async (
   file: Express.Multer.File,
 ): Promise<ICostAttachment> => {
-  const upload = await uploadToCloudinary(file, "costing");
+  const uploaded = await uploadToSpaces(file, "costing");
   return {
-    url: upload.url,
-    publicId: upload.publicId,
-    resourceType: upload.resourceType,
+    url: uploaded.url,
+    key: uploaded.key,
     name: file.originalname,
-    type: upload.resourceType,
+    type: file.mimetype.startsWith("video/") ? "video" : "image",
     size: file.size,
   };
 };
@@ -203,7 +199,7 @@ export const createCost = asyncHandler(async (req: Request, res: Response) => {
     return ApiResponse(res, 201, "Cost added successfully", cost);
   } catch (error) {
     if (attachment) {
-      await deleteFromCloudinary(attachment.publicId, attachment.resourceType);
+      await deleteFromSpaces(attachment.key);
     }
     throw error;
   }
@@ -249,10 +245,7 @@ export const updateCost = asyncHandler(async (req: Request, res: Response) => {
       previousAttachment &&
       (uploadedAttachment || req.body.removeAttachment === true)
     ) {
-      void deleteFromCloudinary(
-        previousAttachment.publicId,
-        previousAttachment.resourceType,
-      );
+      void deleteFromSpaces(previousAttachment.key);
     }
 
     void logActivity({
@@ -267,10 +260,7 @@ export const updateCost = asyncHandler(async (req: Request, res: Response) => {
     return ApiResponse(res, 200, "Cost updated successfully", cost);
   } catch (error) {
     if (uploadedAttachment) {
-      await deleteFromCloudinary(
-        uploadedAttachment.publicId,
-        uploadedAttachment.resourceType,
-      );
+      await deleteFromSpaces(uploadedAttachment.key);
     }
     throw error;
   }
@@ -281,10 +271,7 @@ export const deleteCost = asyncHandler(async (req: Request, res: Response) => {
   if (!cost) throw new ApiError(404, "Cost not found");
 
   if (cost.attachment) {
-    void deleteFromCloudinary(
-      cost.attachment.publicId,
-      cost.attachment.resourceType,
-    );
+    void deleteFromSpaces(cost.attachment.key);
   }
 
   void logActivity({

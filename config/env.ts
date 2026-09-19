@@ -16,7 +16,11 @@ const publicUrl = deploymentHost
 const requiredVars = [
   "MONGO_URI",
   "JWT_SECRET",
-  "IMAGEBB_API_KEY",
+  "DO_SPACES_KEY",
+  "DO_SPACES_SECRET",
+  "DO_SPACES_ENDPOINT",
+  "DO_SPACES_REGION",
+  "DO_SPACES_BUCKET",
 ] as const;
 
 for (const key of requiredVars) {
@@ -29,6 +33,9 @@ export const env = {
   port,
   nodeEnv: process.env.NODE_ENV || "development",
   mongoUri: process.env.MONGO_URI as string,
+  // MONGO_URI has no database path segment, so the db name is passed to
+  // mongoose.connect() separately via this.
+  dbName: process.env.DB_NAME || "bongooceandb",
   clientUrl: process.env.CLIENT_URL || "http://localhost:3000",
   clientUrls: (process.env.CLIENT_URL || "http://localhost:3000")
     .split(",")
@@ -39,12 +46,18 @@ export const env = {
   publicUrl,
   jwtSecret: process.env.JWT_SECRET as string,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  imagebb: {
-    apiKey: process.env.IMAGEBB_API_KEY as string,
-  },
-  cloudinary: {
-    cloudName: process.env.CLOUDINARY_NAME || "",
-    apiKey: process.env.CLOUDINARY_API_KEY || "",
-    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  spaces: {
+    key: process.env.DO_SPACES_KEY || "",
+    secret: process.env.DO_SPACES_SECRET || "",
+    // e.g. "nyc3.digitaloceanspaces.com" — no protocol, no bucket prefix.
+    endpoint: process.env.DO_SPACES_ENDPOINT || "",
+    region: process.env.DO_SPACES_REGION || "",
+    bucket: process.env.DO_SPACES_BUCKET || "",
+    // Optional CDN endpoint for faster public delivery; falls back to the
+    // bucket's direct Spaces URL when unset.
+    cdnEndpoint: process.env.DO_SPACES_CDN_ENDPOINT || "",
+    // All uploads live under this root prefix within the shared bucket, so
+    // this project's files stay namespaced from other apps using the bucket.
+    rootFolder: "bongoocean",
   },
 };

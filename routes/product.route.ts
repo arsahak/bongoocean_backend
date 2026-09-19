@@ -9,7 +9,7 @@ import {
 } from "../controllers/product.controller";
 import { protect, authorize } from "../middleware/auth";
 import { validate } from "../middleware/validate";
-import { upload } from "../middleware/upload";
+import { productUpload } from "../middleware/upload";
 import {
   createProductRules,
   updateProductRules,
@@ -17,9 +17,10 @@ import {
 
 const router = Router();
 
-const productImages = upload.fields([
+const productMedia = productUpload.fields([
   { name: "featureImage", maxCount: 1 },
   { name: "galleryImages", maxCount: 6 },
+  { name: "video", maxCount: 1 },
 ]);
 
 /**
@@ -71,6 +72,16 @@ const productImages = upload.fields([
  *         schema:
  *           type: boolean
  *         description: Filter products by featured status
+ *       - in: query
+ *         name: isTrending
+ *         schema:
+ *           type: boolean
+ *         description: Filter products by trending status
+ *       - in: query
+ *         name: isNewArrival
+ *         schema:
+ *           type: boolean
+ *         description: Filter products by new-arrival status
  *     responses:
  *       200:
  *         description: Products fetched successfully
@@ -154,7 +165,7 @@ const productImages = upload.fields([
  *   get:
  *     summary: Suggest the next auto-generated SKU (manager/admin/superadmin only)
  *     description: >
- *       Returns FMA-WC-{n}, where n is one greater than the highest existing
+ *       Returns BOO-OW-{n}, where n is one greater than the highest existing
  *       sequential SKU. Purely a suggestion — the SKU field remains editable.
  *     tags: [Products]
  *     security:
@@ -176,7 +187,7 @@ const productImages = upload.fields([
  *                   properties:
  *                     sku:
  *                       type: string
- *                       example: FMA-WC-14
+ *                       example: BOO-OW-14
  *       401:
  *         description: Not authenticated
  *         content:
@@ -200,7 +211,7 @@ router
   .post(
     protect,
     authorize("manager", "admin", "superadmin"),
-    productImages,
+    productMedia,
     createProductRules,
     validate,
     createProduct,
@@ -345,7 +356,7 @@ router
   .patch(
     protect,
     authorize("manager", "admin", "superadmin"),
-    productImages,
+    productMedia,
     updateProductRules,
     validate,
     updateProduct,

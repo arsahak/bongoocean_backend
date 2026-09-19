@@ -5,6 +5,9 @@ export interface ICategory extends Document {
   slug: string;
   description?: string;
   image?: string;
+  // DigitalOcean Spaces object key backing `image`, kept only to delete the
+  // old file on replace/removal — not shown in swagger docs.
+  imageKey?: string;
   parent?: mongoose.Types.ObjectId | null;
   isActive: boolean;
   sortOrder: number;
@@ -41,7 +44,8 @@ const slugify = (text: string): string =>
  *           example: Tanks, kits, and accessories for freshwater setups
  *         image:
  *           type: string
- *           example: https://example.com/categories/freshwater.jpg
+ *           description: Hosted on DigitalOcean Spaces
+ *           example: https://bongoocean.nyc3.digitaloceanspaces.com/bongoocean/categories/freshwater.jpg
  *         parent:
  *           type: string
  *           nullable: true
@@ -104,6 +108,11 @@ const categorySchema = new Schema<ICategory>(
       default: "",
     },
     image: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    imageKey: {
       type: String,
       trim: true,
       default: "",
